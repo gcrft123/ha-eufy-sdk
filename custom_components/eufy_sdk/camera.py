@@ -98,7 +98,19 @@ class EufySdkCamera(CoordinatorEntity["EufySdkDataUpdateCoordinator"], Camera):
         )
 
     async def stream_source(self) -> str:
-        """Return the go2rtc RTSP URL — HA's stream component + go2rtc do the work."""
+        """
+        Return the source Home Assistant reads live video from.
+
+        A mains camera uses the bridge's go2rtc RTSP restream, which Home Assistant's
+        stream worker (HLS, camera.record) can open as well as its go2rtc. A battery
+        camera skips that worker, so only Home Assistant's go2rtc reads its source,
+        and it reads the bridge's /stream feed directly (raw H.264/H.265), with no
+        ffmpeg remux in front of it and no RTSP DESCRIBE deadline to miss.
+        """
+        record = self.coordinator.data.get(self._sn) or {}
+        if on_battery_power(record):
+            path = record.get("stream") or f"/stream/{self._sn}"
+            return f"http://{self._host}:{self._port}{path}"
         return f"rtsp://{self._host}:{self._rtsp_port}/{self._sn}"
 
     async def async_create_stream(self) -> Stream | None:
