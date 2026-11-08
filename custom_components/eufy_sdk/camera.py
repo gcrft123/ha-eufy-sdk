@@ -98,8 +98,25 @@ class EufySdkCamera(CoordinatorEntity["EufySdkDataUpdateCoordinator"], Camera):
         )
 
     async def stream_source(self) -> str:
-        """Return the go2rtc RTSP URL — HA's stream component + go2rtc do the work."""
-        return f"rtsp://{self._host}:{self._rtsp_port}/{self._sn}"
+        """
+        Return the live source (TEST BUILD: battery source picked at runtime).
+
+        input_select.eufy_sdk_live_ab picks how a battery camera's live view is
+        pulled, so the variants can be timed against each other on one install:
+        rtsp (0.6.0/0.7.0), relay (ha-eufy-sdk#174) or http (the bridge's own
+        Annex-B feed, read by go2rtc natively). Without the helper it is http.
+        """
+        rtsp = f"rtsp://{self._host}:{self._rtsp_port}/{self._sn}"
+        record = self.coordinator.data.get(self._sn) or {}
+        if not on_battery_power(record):
+            return rtsp
+        ab = self.hass.states.get("input_select.eufy_sdk_live_ab")
+        mode = ab.state if ab else "http"
+        if mode == "rtsp":
+            return rtsp
+        if mode == "relay":
+            return f"ffmpeg:{rtsp}#video=copy#timeout=40"
+        return f"http://{self._host}:{self._port}{record.get('stream') or f'/stream/{self._sn}'}"
 
     async def async_create_stream(self) -> Stream | None:
         """
